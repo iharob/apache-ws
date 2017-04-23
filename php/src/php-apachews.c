@@ -48,14 +48,14 @@ static zend_object_handlers php_apachews_event_handlers;
 
 PHP_MINIT_FUNCTION(apachews_php);
 zend_module_entry php_apachews_module_entry = {
-	MODULE_HEADER "apachews",
-	NULL,
-	PHP_MINIT(apachews_php),
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	MODULE_VERSION STANDARD_MODULE_PROPERTIES
+    MODULE_HEADER "apachews",
+    NULL,
+    PHP_MINIT(apachews_php),
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    MODULE_VERSION STANDARD_MODULE_PROPERTIES
 };
 
 ZEND_GET_MODULE(php_apachews)
@@ -65,17 +65,17 @@ PHP_MINIT_FUNCTION(apachews_php)
     zend_class_entry ce;
     int flags;
     // Create 'Server' Class Entry
-	CREATE_CLASS_ENTRY(ce, "Server", php_apachews_server);
-	// Create 'Event' Class Entry
-	CREATE_CLASS_ENTRY(ce, "Event", php_apachews_event);
+    CREATE_CLASS_ENTRY(ce, "Server", php_apachews_server);
+    // Create 'Event' Class Entry
+    CREATE_CLASS_ENTRY(ce, "Event", php_apachews_event);
     // OS specific initialization
     apachews_initialize_os();
-	// Remove the ports file if it exists
-	// otherwise fail silently
+    // Remove the ports file if it exists
+    // otherwise fail silently
     flags = CONST_PERSISTENT | CONST_CS;
-	// Store the module number (to avoid repeating)
+    // Store the module number (to avoid repeating)
     modnum = php_apachews_module_entry.module_number;
-	// Create PHP constants
+    // Create PHP constants
     apachews_register_enum(ApacheWSError, flags, modnum);
     apachews_register_enum(ApacheWSNoData, flags, modnum);
     apachews_register_enum(ApacheWSConnectionClosed, flags, modnum);
@@ -91,23 +91,23 @@ php_apachews_server_new(zend_class_entry *ce TSRMLS_DC)
     php_apachews_server *object;
     ZEND_OBJECT result;
     object = ecalloc(1, SIZEOF_CE(php_apachews_server));
-	result = PHP_APACHEWS_EMPTY_ZEND_OBJECT;
+    result = PHP_APACHEWS_EMPTY_ZEND_OBJECT;
     if (object == NULL)
         return result;
     zend_object_std_init(&object->parent, ce TSRMLS_CC);
     object_properties_init(&object->parent, ce);
 
-	PHP_APACHEWS_INITIALIZE_OBJECT(result, object);
-	PHP_APACHEWS_SET_HANDLERS(result, server);
+    PHP_APACHEWS_INITIALIZE_OBJECT(result, object);
+    PHP_APACHEWS_SET_HANDLERS(result, server);
 
-	return result;
+    return result;
 
 }
 
 static void
 php_apachews_server_dtor(zend_object *object)
 {
-	php_apachews_server *instance;
+    php_apachews_server *instance;
     instance = PHP_APACHEWS_GET_OBJECT(php_apachews_server, object);
     // Free the context
     apachews_context_free(instance->context);
@@ -123,16 +123,16 @@ php_apachews_event_new(zend_class_entry *ce TSRMLS_DC)
     php_apachews_event *object;
     ZEND_OBJECT result;
     object = ecalloc(1, SIZEOF_CE(php_apachews_event));
-	result = PHP_APACHEWS_EMPTY_ZEND_OBJECT;
+    result = PHP_APACHEWS_EMPTY_ZEND_OBJECT;
     if (object == NULL)
         return result;
     zend_object_std_init(&object->parent, ce TSRMLS_CC);
     object_properties_init(&object->parent, ce);
 
-	PHP_APACHEWS_INITIALIZE_OBJECT(result, object);
-	PHP_APACHEWS_SET_HANDLERS(result, event);
+    PHP_APACHEWS_INITIALIZE_OBJECT(result, object);
+    PHP_APACHEWS_SET_HANDLERS(result, event);
 
-	return result;
+    return result;
 }
 
 static void
