@@ -18,7 +18,7 @@ To activate the module you just need to use the [LoadModule](https://httpd.apach
 
 # PHP Extension
 
-A "*toy*" implementations of a PHP extension is also contained in this package, it allows writting a PHP WebSocket capable program with very few lines of code, the simplest WebSocket program is one that "*echoes*" what the client sends back to the client, such a program is implemented with our PHP extension with this simple code
+A "*toy*" implementation of a PHP extension is also contained within this package, it allows writting a PHP WebSocket capable program with very few lines of code, the simplest WebSocket program is one that "*echoes*" what the client sends back to the client, such a program is implemented with our PHP extension with this simple code
 
 	<?php
 	$path = "/home/iharob/www/hti/hti.ws";
