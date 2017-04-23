@@ -95,3 +95,9 @@ There is as well, a python module that allows writing *producer* programs with p
 		elif event.type() == Event.NoData:
 			# An empty frame was received
 			pass
+
+# Final Notes
+
+Note that these are really *toy* implementations to illustrate how to use the module, the code of course can be used as the base for a full featured PHP extension or Python module or as the basis for a different kind of binding.
+
+It's also noteworthy that it can be used as an example on how to write a c program that uses this module and it's interface, I actually used it for a c program and it was a great success, unfortunately I am not allowed to put that program in a repository here.
