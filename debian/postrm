@@ -1,0 +1,6 @@
+#!/bin/bash
+
+rm -f /etc/apache2/mods-enabled/apachews.load
+rm -f /etc/apache2/mods-enabled/apachews.conf
+
+systemctl restart apache2

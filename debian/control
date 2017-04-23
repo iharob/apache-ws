@@ -1,0 +1,10 @@
+Source: apachews
+Priority: optional
+Build-Depends: debhelper (>= 9)
+Maintainer: Iharob Al Asimi
+
+Package: apachews
+Architecture: amd64 i386
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Apache WS module
+  Websocket protocol implementation for Apache2

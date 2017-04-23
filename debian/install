@@ -1,0 +1,2 @@
+debian/apache2/mods-available/apachews.load etc/apache2/mods-available
+debian/apache2/mods-available/apachews.conf etc/apache2/mods-available
