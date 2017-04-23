@@ -9,7 +9,7 @@ To simplify this process, a library is shipped that allows transparent creation 
 
 The motivation to implement this like I did, is that apache handles HTTP for us so the handshake process is rather simple and also because Apache takes care of the TCP connection for us, so this was simple to implement and it is simple to use. Not to mention, that the underlying software that handles the most important part is fairly reliable and robust.
 
-To activate the module you just need to add a handler to your [apache directory configuration](http://httpd.apache.org/docs/current/mod/core.html#directory), for example
+To activate the module you just need to use the [LoadModule](https://httpd.apache.org/docs/2.4/mod/mod_so.html) Apache2 configuration directive and add a handler to your [apache directory configuration](http://httpd.apache.org/docs/current/mod/core.html#directory), for example
 
     <Directory /var/www/public_html>
         AddHandler websocket .ws
@@ -34,6 +34,8 @@ A "*toy*" implementations of a PHP extension is also contained in this package, 
 			break;
 		case ApacheWSIOEvent:
 			$data = $event->read();
+			// The read function could return an error, for
+			// instance if the client suddenly disconnects
 			switch ($data) {
 				case ApacheWSError:
 				case ApacheWSConnectionClosed:
@@ -55,6 +57,7 @@ A "*toy*" implementations of a PHP extension is also contained in this package, 
 		}
 	}
 	?>
+
     
 This given that your site is at `/var/www/public_html`, you can then connect to it from javascript like this
     
@@ -85,8 +88,12 @@ There is as well, a python module that allows writing *producer* programs with p
 			event.close()
 		elif event.type() == Event.IO:
 			data = event.read()
+			# The read function could return an error,
+			# for example if the clients suddenly disconnects
 			if data == Event.ConnectionClosed:
-				event.close()
+			    event.close()
+			elif data == Event.Error:
+			    pass
 			else:
 				event.write(data)
 		elif event.type() == Event.Error:
