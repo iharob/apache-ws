@@ -4,11 +4,11 @@
 #include <php.h>
 
 #if ZEND_MODULE_API_NO >= 20010901
-#	define MODULE_VERSION "1.0.0",
-#	define MODULE_HEADER STANDARD_MODULE_HEADER,
+#    define MODULE_VERSION "1.0.0",
+#    define MODULE_HEADER STANDARD_MODULE_HEADER,
 #else
-#	define MODULE_VERSION
-#	define MODULE_HEADER
+#    define MODULE_VERSION
+#    define MODULE_HEADER
 #endif
 
 #if PHP_MAJOR_VERSION == 7
@@ -23,12 +23,12 @@
 #   define PHP_OBJECT_HEADER
 #   define PHP_OBJECT_FOOTER zend_object parent;
 #   define SIZEOF_CE(ice) sizeof(ice) + zend_object_properties_size(ice ## _ce)
-#	define PHP_APACHEWS_RETURN_STRINGL(s, l) RETURN_STRINGL(s, l)
-#	define ZEND_OBJECT zend_object *
-#	define PHP_APACHEWS_EMPTY_ZEND_OBJECT NULL
-#	define PHP_APACHEWS_SET_HANDLERS(zov, name) (zov)->handlers = &(php_apachews_ ## name ## _handlers)
-#	define PHP_APACHEWS_INITIALIZE_OBJECT(zov, object) zov = &object->parent
-#	define PHP7_INITIALIZER(name)                           \
+#    define PHP_APACHEWS_RETURN_STRINGL(s, l) RETURN_STRINGL(s, l)
+#    define ZEND_OBJECT zend_object *
+#    define PHP_APACHEWS_EMPTY_ZEND_OBJECT NULL
+#    define PHP_APACHEWS_SET_HANDLERS(zov, name) (zov)->handlers = &(php_apachews_ ## name ## _handlers)
+#    define PHP_APACHEWS_INITIALIZE_OBJECT(zov, object) zov = &object->parent
+#    define PHP7_INITIALIZER(name)                           \
         name ## _handlers.offset = XtOffsetOf(name, parent); \
         name ## _handlers.dtor_obj = name ## _dtor
 #else
@@ -41,23 +41,23 @@ static zend_object_value php_apachews_empty_zend_object_value;
 #   define Z_PHP_APACHEWS_GET_OBJECT(type, obj) zend_object_store_get_object(obj TSRMLS_CC)
 #   define PHP_APACHEWS_GET_OBJECT(type, obj) (type *) obj
 #   define apachews_FETCH_RESOURCE(x, y, z) \
-		zend_fetch_resource(APACHEWS_ZVAL((x)) TSRMLS_CC, -1,  (y), NULL, 1, (z))
+        zend_fetch_resource(APACHEWS_ZVAL((x)) TSRMLS_CC, -1,  (y), NULL, 1, (z))
 #   define SIZEOF_CE(ice) sizeof(ice)
-#	define PHP7_INITIALIZER(name)
-#	define PHP_APACHEWS_RETURN_STRINGL(s, l) RETURN_STRINGL(s, (int) l, 1)
-#	define ZEND_OBJECT zend_object_value
-#	define PHP_APACHEWS_EMPTY_ZEND_OBJECT php_apachews_empty_zend_object_value
-#	define PHP_APACHEWS_SET_HANDLERS(zov, name) (zov).handlers = &(php_apachews_ ## name ## _handlers)
-#	define PHP_APACHEWS_INITIALIZE_OBJECT(zov, object) (zov).handle = zend_objects_store_put(object, (zend_objects_store_dtor_t) zend_objects_destroy_object, (zend_objects_free_object_storage_t) zend_objects_free_object_storage, NULL TSRMLS_CC)
+#    define PHP7_INITIALIZER(name)
+#    define PHP_APACHEWS_RETURN_STRINGL(s, l) RETURN_STRINGL(s, (int) l, 1)
+#    define ZEND_OBJECT zend_object_value
+#    define PHP_APACHEWS_EMPTY_ZEND_OBJECT php_apachews_empty_zend_object_value
+#    define PHP_APACHEWS_SET_HANDLERS(zov, name) (zov).handlers = &(php_apachews_ ## name ## _handlers)
+#    define PHP_APACHEWS_INITIALIZE_OBJECT(zov, object) (zov).handle = zend_objects_store_put(object, (zend_objects_store_dtor_t) zend_objects_destroy_object, (zend_objects_free_object_storage_t) zend_objects_free_object_storage, NULL TSRMLS_CC)
 #endif
 
 #define CREATE_CLASS_ENTRY(ce, name, type) do {                                                     \
-		INIT_CLASS_ENTRY(ce, "apachews\\" name, type ## _methods);                                  \
-		type ## _ce = zend_register_internal_class(&ce TSRMLS_CC);                                  \
-		type ## _ce->create_object = type ## _new;                                                  \
-		memcpy(&(type ## _handlers), zend_get_std_object_handlers(), sizeof(zend_object_handlers)); \
-		PHP7_INITIALIZER(type);                                                                     \
-	} while (0)
+        INIT_CLASS_ENTRY(ce, "apachews\\" name, type ## _methods);                                  \
+        type ## _ce = zend_register_internal_class(&ce TSRMLS_CC);                                  \
+        type ## _ce->create_object = type ## _new;                                                  \
+        memcpy(&(type ## _handlers), zend_get_std_object_handlers(), sizeof(zend_object_handlers)); \
+        PHP7_INITIALIZER(type);                                                                     \
+    } while (0)
 
 #define argc ZEND_NUM_ARGS() TSRMLS_CC
 #define __CONST_DEF(x) #x, STRLEN(#x), x

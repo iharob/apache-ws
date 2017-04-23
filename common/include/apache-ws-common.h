@@ -2,30 +2,30 @@
 #define __apachews_COMMON_H__
 
 #if defined (_WIN32)
-#	include <WinSock2.h>
-#	define MSG_DONTWAIT 0
-#	define MSG_NOSIGNAL 0
-#	define EXPORT __declspec(dllexport)
-	typedef SSIZE_T ssize_t;
+#    include <WinSock2.h>
+#    define MSG_DONTWAIT 0
+#    define MSG_NOSIGNAL 0
+#    define EXPORT __declspec(dllexport)
+    typedef SSIZE_T ssize_t;
 #else
-#	include <sys/socket.h>
+#    include <sys/socket.h>
 #   include <stdint.h>
-#	include <stdbool.h>
-	typedef int SOCKET;
-	typedef int32_t DWORD;
-	typedef bool BOOL;
-#	define EXPORT
-#	define INVALID_SOCKET (-1)
-#	define SOCKET_ERROR (-1)
-#	define closesocket(x) do {shutdown((x), SHUT_RDWR); close((x));} while(0)
+#    include <stdbool.h>
+    typedef int SOCKET;
+    typedef int32_t DWORD;
+    typedef bool BOOL;
+#    define EXPORT
+#    define INVALID_SOCKET (-1)
+#    define SOCKET_ERROR (-1)
+#    define closesocket(x) do {shutdown((x), SHUT_RDWR); close((x));} while(0)
 #endif
 
 #define SOCKET_DISCONNECTED 0
 typedef struct apachews_stream apachews_stream;
 typedef enum apachews_event_type {
     ApacheWSInvalidEvent = 8000,
-	ApacheWSAcceptEvent, 
-	ApacheWSIOEvent
+    ApacheWSAcceptEvent, 
+    ApacheWSIOEvent
 } apachews_event_type;
 
 typedef enum apachews_status {

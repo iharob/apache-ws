@@ -10,7 +10,7 @@
 #include <WS2tcpip.h>
 
 typedef enum bool {
-	false, true
+    false, true
 } bool;
 
 #pragma comment(lib, "Ws2_32.lib")
@@ -108,17 +108,17 @@ apachews_is_big_endian()
 uint64_t
 ntohll(uint64_t value)
 {
-	if (apachews_is_big_endian() != 0)
-		return value;
-	return __bswap_64(value);
+    if (apachews_is_big_endian() != 0)
+        return value;
+    return __bswap_64(value);
 }
 
 uint64_t
 htonll(uint64_t value)
 {
-	if (apachews_is_big_endian() != 0)
-		return value;
-	return __bswap_64(value);
+    if (apachews_is_big_endian() != 0)
+        return value;
+    return __bswap_64(value);
 }
 
 static int32_t
