@@ -20,43 +20,46 @@ To activate the module you just need to use the [LoadModule](https://httpd.apach
 
 A "*toy*" implementation of a PHP extension is also contained within this package, it allows writting a PHP WebSocket capable program with very few lines of code, the simplest WebSocket program is one that "*echoes*" what the client sends back to the client, such a program is implemented with our PHP extension with this simple code
 
-	<?php
-	$path = "/home/iharob/www/hti/hti.ws";
-	if (file_exists($path))
-		unlink($path);
-	$ws = new apachews\Server($path);
-	while ($event = $ws->dequeue()) {
-		switch ($event->type()) {
-		case ApacheWSAcceptEvent:
-			// Ignore this, or put the connection in an array
-			// to close it when we want, or write to it when
-			// we need.
-			break;
-		case ApacheWSIOEvent:
-			$data = $event->read();
-			// The read function could return an error, for
-			// instance if the client suddenly disconnects
-			switch ($data) {
-				case ApacheWSError:
-				case ApacheWSConnectionClosed:
-					break;
-				default:
-					$event->write($data);
-					break;
-			}
-			break;
-		case ApacheWSNoData:
-			// Nothing received, so perhaps we can do something
-			// special in this case
-			break;
-		case ApacheWSError:
-			// An error occurred
-			break;
-		case ApacheWSConnectionClosed:
-			break;
-		}
-	}
-	?>
+```php
+<?php
+$path = "/home/iharob/www/hti/hti.ws";
+if (file_exists($path))
+    unlink($path);
+$ws = new apachews\Server($path);
+while ($event = $ws->dequeue()) {
+    switch ($event->type()) {
+    case ApacheWSAcceptEvent:
+        // Ignore this, or put the connection in an array
+        // to close it when we want, or write to it when
+        // we need.
+        break;
+    case ApacheWSIOEvent:
+        $data = $event->read();
+        // The read function could return an error, for
+        // instance if the client suddenly disconnects
+        switch ($data) {
+        case ApacheWSError:
+        case ApacheWSConnectionClosed:
+            break;
+        default:
+            $event->write($data);
+            break;
+        }
+        break;
+    case ApacheWSNoData:
+        // Nothing received, so perhaps we can do something
+        // special in this case
+        break;
+    case ApacheWSError:
+        // An error occurred
+        break;
+    case ApacheWSConnectionClosed:
+        break;
+    }
+}
+?>
+```
+
 
     
 This given that your site is at `/var/www/public_html`, you can then connect to it from javascript like this
@@ -69,39 +72,41 @@ you can see then, how simple it is to use this.
 
 There is as well, a python module that allows writing *producer* programs with python. It is just as simple to write the echo program,
 
-	from apachews import *
-	import os
+```python
+from apachews import *
+import os
 
-	path = '/var/www/public_html/websocket.ws'
-	server = Server(path)
-	while True:
-		event = server.dequeue()
-		if event.type() == Event.Accept:
-			# This just means, that a new connection
-			# was accepted. We could put this object
-			# in an array to interact with this client
-			# at will
-			pass
-		elif event.type() == Event.ConnectionClosed:
-			# The connection was closed, close it from
-			# this side too
-			event.close()
-		elif event.type() == Event.IO:
-			data = event.read()
-			# The read function could return an error,
-			# for example if the clients suddenly disconnects
-			if data == Event.ConnectionClosed:
-			    event.close()
-			elif data == Event.Error:
-			    pass
-			else:
-				event.write(data)
-		elif event.type() == Event.Error:
-			# An error occurred
-			pass
-		elif event.type() == Event.NoData:
-			# An empty frame was received
-			pass
+path = '/var/www/public_html/websocket.ws'
+server = Server(path)
+while True:
+    event = server.dequeue()
+    if event.type() == Event.Accept:
+        # This just means, that a new connection
+        # was accepted. We could put this object
+        # in an array to interact with this client
+        # at will
+        pass
+    elif event.type() == Event.ConnectionClosed:
+        # The connection was closed, close it from
+        # this side too
+        event.close()
+    elif event.type() == Event.IO:
+        data = event.read()
+        # The read function could return an error,
+        # for example if the clients suddenly disconnects
+        if data == Event.ConnectionClosed:
+            event.close()
+        elif data == Event.Error:
+            pass
+        else:
+            event.write(data)
+    elif event.type() == Event.Error:
+        # An error occurred
+        pass
+    elif event.type() == Event.NoData:
+        # An empty frame was received
+        pass
+```
 
 # Final Notes
 
