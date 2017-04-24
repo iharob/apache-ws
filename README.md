@@ -22,7 +22,7 @@ A "*toy*" implementation of a PHP extension is also contained within this packag
 
 ```php
 <?php
-$path = "/home/iharob/www/hti/hti.ws";
+$path = "/var/www/public_html/websocket.ws";
 if (file_exists($path))
     unlink($path);
 $ws = new apachews\Server($path);
