@@ -52,7 +52,7 @@ typedef long long int ssize_t;
 
 static void apachews_register_hooks(apr_pool_t *pool);
 
-enum http_apachews_frame_type {
+enum apachews_frame_type {
     WSContinuationFrame = 0x00,
     WSTextFrame = 0x01,
     WSBinaryFrame = 0x02,
@@ -64,7 +64,7 @@ enum http_apachews_frame_type {
 
 struct apachews_frame {
     uint8_t *data;
-    enum http_apachews_frame_type type;
+    enum apachews_frame_type type;
     int64_t length;
 };
 
