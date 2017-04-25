@@ -1,4 +1,4 @@
-AC_INIT([bdv], [0.0.0], [iharob@gmail.com])
+AC_INIT([apache-ws], [0.0.0], [iharob@gmail.com])
 AM_INIT_AUTOMAKE([subdir-objects foreign])
 
 AC_PROG_CC
