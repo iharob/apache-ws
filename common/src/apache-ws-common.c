@@ -34,41 +34,118 @@ typedef struct apachews_stream {
 #define BASE_BUFFER_SIZE 0x4000
 
 typedef struct apachews_event {
-    SOCKET socket;
+    apachews_client *client;
     apachews_event *next;
     apachews_event_type type;
-    apachews_context *context;
+    const apachews_context *context;
 } apachews_event;
+
+typedef struct apachews_client {
+    apachews_context *context;
+    SOCKET sock;
+    char *language;
+} apachews_client;
+
+
+typedef struct apachews_client_list {
+    apachews_client *client;
+    struct apachews_client_list *next;
+} apachews_client_list;
 
 typedef struct apachews_context {
     SOCKET server;
-    SOCKET *clients;
+    apachews_client_list *clients;
     apachews_event *queue;
-    size_t count;
-    size_t size;
 } apachews_context;
+
+static int
+apachews_clientcmp(const void *const _lhs, const void *const _rhs)
+{
+    const apachews_client *lhs;
+    const apachews_client *rhs;
+
+    lhs = _lhs;
+    rhs = _rhs;
+
+    return (int) (lhs->sock - rhs->sock);
+}
+
+apachews_client_list *
+apachews_client_list_create_node(apachews_client *const value)
+{
+    apachews_client_list *list;
+
+    list = malloc(sizeof(*list));
+    if (list == NULL)
+        return NULL;
+    list->client = value;
+    list->next = NULL;
+
+    return list;
+}
+
+apachews_client *
+apachews_client_list_get_client(apachews_client_list *const list)
+{
+    return list->client;
+}
+
+bool
+apachews_client_list_append(apachews_client_list *const list, apachews_client *const value)
+{
+    apachews_client_list *node;
+    node = apachews_client_list_create_node(value);
+    if (node == NULL)
+        return false;
+    node->next = list->next;
+    list->next = node;
+    return true;
+}
+
+apachews_client_list **
+apachews_client_list_find(apachews_client_list *list, const apachews_client *const value)
+{
+    for (apachews_client_list **node = &list; *node != NULL; node = &(*node)->next) {
+        if (apachews_clientcmp(value, (*node)->client) == 0) {
+            return node;
+        }
+    }
+    return NULL;
+}
+
+apachews_client *
+apachews_create_client(SOCKET sock, apachews_context *const ctx)
+{
+    apachews_client *client;
+    client = malloc(sizeof(*client));
+    if (client == NULL)
+        return NULL;
+    client->context = ctx;
+    client->sock = sock;
+    // TODO: add more data perhaps?
+    return client;
+}
 
 static apachews_context *
 apachews_create_context(SOCKET sock)
 {
-    apachews_context *context;
+    apachews_context *ctx;
+    apachews_client *root;
     // Allocate space
-    context = malloc(sizeof(*context));
-    if (context == NULL)
+    ctx = malloc(sizeof(*ctx));
+    if (ctx == NULL)
         return NULL;
-    // Populate
-    context->queue = NULL;
-    context->server = sock;
-    // Make initial room for the clients
-    context->clients = malloc(DEFAULT_CLIENTS_COUNT * sizeof(*context->clients));
-    // Check that there is initial room
-    if (context->clients == NULL) {
-        context->size = 0;
-    } else {
-        context->size = DEFAULT_CLIENTS_COUNT;
+    root = apachews_create_client(INVALID_SOCKET, ctx);
+    if (root == NULL) {
+        free(ctx);
+        return NULL;
     }
-    context->count = 0;
-    return context;
+    // Make initial room for the clients
+    ctx->clients = apachews_client_list_create_node(root);
+    // Populate
+    ctx->queue = NULL;
+    ctx->server = sock;
+    return ctx;
 }
 
 #if defined (_WIN32)
@@ -208,69 +285,32 @@ error:
 #endif
 
 void
-apachews_context_free(apachews_context *context)
+apachews_context_free(apachews_context *ctx)
 {
-    if (context == NULL)
+    if (ctx == NULL)
         return;
-    free(context->clients);
-    free(context->queue);
-    free(context);
-}
-
-static int
-apachews_sockcmp(const void *const _lhs, const void *const _rhs)
-{
-    const SOCKET *lhs;
-    const SOCKET *rhs;
-
-    lhs = _lhs;
-    rhs = _rhs;
-
-    return (int) (*lhs - *rhs);
+    // FIXME: remove them all?
+    free(ctx->clients);
+    free(ctx->queue);
+    free(ctx);
 }
 
 void
-apachews_context_remove_client(apachews_context *ctx, SOCKET sock)
+apachews_context_remove_client(apachews_context *ctx, const apachews_client *const client)
 {
-    SOCKET *client;
-    client = bsearch(&sock, ctx->clients, ctx->count, sizeof(sock), apachews_sockcmp);
-    if (client == NULL)
-        return;
-    *client = ctx->clients[ctx->count - 1];
+    apachews_client_list **found;
+    found = apachews_client_list_find(ctx->clients, client);
+    if (*found != NULL) {
+        apachews_client_list *next;
+        next = (*found)->next;
 
-    qsort(ctx->clients, ctx->count--, sizeof(sock), apachews_sockcmp);
-}
-
-BOOL
-apachews_context_append_client(apachews_context *context, SOCKET client)
-{
-    // Check if we have room for the next client
-    if (context->count + 1 > context->size) {
-        SOCKET *clients;
-        size_t size;
-        // Increase the size to make room for the base default count
-        // again
-        size = context->size + DEFAULT_CLIENTS_COUNT;
-        // Reallocate memory for the SOCKET objects
-        clients = realloc(context->clients, size * sizeof(*context->clients));
-        if (clients == NULL)
-            return false;
-        // Update the context structure now that everything
-        // went OK
-        context->clients = clients;
-        context->size = size;
+        free(*found);
+        *found = next;
     }
-    // Insert the new element into the list
-    context->clients[context->count++] = client;
-    // Sort items
-    qsort(context->clients, context->count,
-          sizeof(*context->clients), apachews_sockcmp);
-    return true;
 }
 
 BOOL
-apachews_queue_event(apachews_event **queue,
-    SOCKET socket, apachews_context *context, apachews_event_type type)
+apachews_queue_event(apachews_event **queue, apachews_client *const client, apachews_context *ctx, apachews_event_type type)
 {
     apachews_event *event;
     // Create the new event, that will be queued into the
@@ -281,9 +321,9 @@ apachews_queue_event(apachews_event **queue,
     // Point to the current head in the linked list
     // and populate the event
     event->next = *queue;
-    event->socket = socket;
+    event->client = client;
     event->type = type;
-    event->context = context;
+    event->context = ctx;
     // Reset the head to this new event
     *queue = event;
     // Tell the caller everything was fine
@@ -291,20 +331,20 @@ apachews_queue_event(apachews_event **queue,
 }
 
 static apachews_event *
-apachews_dequeue_event(apachews_context *context)
+apachews_dequeue_event(apachews_context *ctx)
 {
     apachews_event *event;
     // Save a pointer to the current head of the linked list
-    event = context->queue;
+    event = ctx->queue;
     if (event == NULL)
         return NULL;
     // Make the next node the current head
-    context->queue = event->next;
+    ctx->queue = event->next;
     return event;
 }
 
 apachews_event *
-apachews_create_accept_event(apachews_context *context, SOCKET sock)
+apachews_create_accept_event(apachews_context *ctx, apachews_client *const client)
 {
     apachews_event *event;
     // Attempt to allocate memory
@@ -315,21 +355,15 @@ apachews_create_accept_event(apachews_context *context, SOCKET sock)
     event->next = NULL;
     // This allows to have a reference to the
     // connected client
-    event->socket = sock;
+    event->client = client;
     // This, is mandatory
     event->type = ApacheWSAcceptEvent;
     // Always keep the extension IN CONTEXT
-    event->context = context;
+    event->context = ctx;
     return event;
 }
 
-SOCKET
-apachews_event_get_socket(const apachews_event *const event)
-{
-    return event->socket;
-}
-
-apachews_context *
+const apachews_context *
 apachews_event_get_context(const apachews_event * const event)
 {
     return event->context;
@@ -341,8 +375,31 @@ apachews_event_get_type(const apachews_event * const event)
     return event->type;
 }
 
+SOCKET
+apachews_client_list_add_all_to_fdset(apachews_client_list *const clients, fd_set *fds, SOCKET nfds)
+{
+    for (apachews_client_list *bst = clients; bst != NULL; bst = bst->next) {
+        const apachews_client *client;
+        SOCKET sock;
+        client = apachews_client_list_get_client(bst);
+        if ((sock = apachews_client_get_socket(client)) == INVALID_SOCKET)
+            continue;
+        if (nfds < sock)
+            nfds = sock;
+        FD_SET(sock, fds);
+    }
+    return nfds;
+}
+
+
+const char *
+apachews_client_get_language(const apachews_client *const ctx)
+{
+    return ctx->language;
+}
+
 apachews_event *
-apachews_next_event(apachews_context *ctx)
+apachews_server_next_event(apachews_context *ctx)
 {
     fd_set rfds;
     SOCKET nfds;
@@ -359,15 +416,8 @@ apachews_next_event(apachews_context *ctx)
     FD_ZERO(&rfds);
     // Add the server (for accept only)
     FD_SET(ctx->server, &rfds);
-    // Store server as `nfds'
-    nfds = ctx->server;
     // Add every file descriptor to the set
-    for (size_t idx = 0; idx < ctx->count; ++idx) {
-        // This is for non-windows only
-        if (nfds < ctx->clients[idx])
-            nfds = ctx->clients[idx];
-        FD_SET(ctx->clients[idx], &rfds);
-    }
+    nfds = apachews_client_list_add_all_to_fdset(ctx->clients, &rfds, ctx->server);
     // Perform descriptor selection
     if ((count = select((int) nfds + 1, &rfds, NULL, NULL, NULL)) == SOCKET_ERROR)
         return NULL;
@@ -381,12 +431,14 @@ apachews_next_event(apachews_context *ctx)
     // the caller can continue with the next event
     if (FD_ISSET(ctx->server, &rfds) != 0) {
         apachews_event *event;
-        SOCKET client;
-        client = accept(ctx->server, NULL, NULL);
-        if (client == INVALID_SOCKET)
+        SOCKET sock;
+        apachews_client *client;
+        sock = accept(ctx->server, NULL, NULL);
+        if (sock == INVALID_SOCKET)
             return NULL;
+        client = apachews_create_client(sock, ctx);
         // Append the accepted client to the list
-        if (apachews_context_append_client(ctx, client) == false)
+        if (apachews_client_list_append(ctx->clients, client) == false)
             return NULL;
         // Make a accept event, this is created on the heap because
         // PHP will deallocate the memory so using a stack variable
@@ -397,12 +449,15 @@ apachews_next_event(apachews_context *ctx)
         return event;
     } else {
         // Check if there are read events
-        for (size_t idx = 0; idx < ctx->count; ++idx) {
-            SOCKET client;
+        for (apachews_client_list *bst = ctx->clients; bst != NULL; bst = bst->next) {
+            apachews_client *client;
+            SOCKET sock;
+
+            client = apachews_client_list_get_client(bst);
             // This is just to avoid repeating code
-            client = ctx->clients[idx];
+            sock = apachews_client_get_socket(client);
             // Check whether this socket was in the set
-            if (FD_ISSET(client, &rfds) == 0)
+            if (FD_ISSET(sock, &rfds) == 0)
                 continue;
             // Add the socket to the queue
             apachews_queue_event(&ctx->queue, client, ctx, ApacheWSIOEvent);
@@ -541,7 +596,7 @@ apachews_event_read(const apachews_event *const event, uint8_t **data, size_t *l
     if (stream == NULL)
         return ApacheWSOutOfMemory;
     // Extract the socket from the event
-    sock = event->socket;
+    sock = apachews_client_get_socket(event->client);
     if (sock == INVALID_SOCKET)
         goto error;
     // Start reading data until
@@ -597,30 +652,59 @@ apachews_write(SOCKET sock, const uint8_t *data, size_t length)
 }
 
 ssize_t
-apachews_event_write(const apachews_event *const event, uint8_t *data, size_t length)
+apachews_event_respond(const apachews_event *const event, uint8_t *data, size_t length)
 {    
     SOCKET sock;
     // Extract the socket from the pointer
-    sock = event->socket;
+    sock = apachews_client_get_socket(event->client);
     if (sock == INVALID_SOCKET)
         return -1;
     // Return the length of delivered data
     return apachews_write(sock, data, length);
 }
 
-int
-apachews_broadcast(const apachews_context *const context, const uint8_t *const data, size_t length)
+ssize_t
+apachews_server_broadcast(const apachews_context *const ctx, const uint8_t *const data, size_t length)
 {
     ssize_t total;
     total = 0;
-    for (size_t idx = 0 ; idx < context->count ; ++idx) {
-        ssize_t result;
-        result = apachews_write(context->clients[idx], data, length);
-        if (result == -1)
-            goto error;
-        total += result;
+    for (apachews_client_list *node = ctx->clients; node != NULL; node = node->next) {
+        total += apachews_client_send(apachews_client_list_get_client(node), data, length);
     }
-    return total + 1;
-error:
-    return -1;
+    return total;
+}
+
+ssize_t
+apachews_client_send(const apachews_client *const client, const void *const data, size_t length)
+{
+    return apachews_write(apachews_client_get_socket(client), data, length);
+}
+
+int
+apachews_client_close(apachews_client *const client)
+{
+    if (client == NULL)
+        return -1;
+    closesocket(client->sock);
+    // Remove the client from the context
+    apachews_context_remove_client(client->context, client);
+    return 0;
+}
+
+apachews_client *
+apachews_event_get_client(const apachews_event *const event)
+{
+    return event->client;
+}
+
+SOCKET
+apachews_client_get_socket(const apachews_client *const client)
+{
+    return client->sock;
+}
+
+void
+apachews_client_free(apachews_client *const client)
+{
+    free(client);
 }

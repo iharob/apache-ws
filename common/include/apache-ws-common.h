@@ -40,20 +40,28 @@ typedef enum apachews_status {
 
 typedef struct apachews_event apachews_event;
 typedef struct apachews_context apachews_context;
+typedef struct apachews_client apachews_client;
 // Context
 apachews_context *apachews_create(const char *const path);
 void apachews_context_free(apachews_context *ctx);
-void apachews_context_remove_client(apachews_context *ctx, SOCKET sock);
-apachews_event *apachews_next_event(apachews_context *context);
-int apachews_broadcast(const apachews_context *const context, const uint8_t *const data, size_t length);
+void apachews_context_remove_client(apachews_context *ctx, const apachews_client *const  client);
+apachews_event *apachews_server_next_event(apachews_context *ctx);
+ssize_t apachews_server_broadcast(const apachews_context *const ctx, const uint8_t *const data, size_t length);
+const char *apachews_client_get_language(const apachews_client * const ctx);
 
 // Event
-SOCKET apachews_event_get_socket(const apachews_event *const event);
-apachews_context *apachews_event_get_context(const apachews_event *const event);
+const apachews_context *apachews_event_get_context(const apachews_event *const event);
+apachews_client *apachews_event_get_client(const apachews_event *const event);
 apachews_event_type apachews_event_get_type(const apachews_event *const event);
 void apachews_event_free(apachews_event *event);
 apachews_status apachews_event_read(const apachews_event *const event, uint8_t **data, size_t *length);
-ssize_t apachews_event_write(const apachews_event *const event, uint8_t *data, size_t length);
+ssize_t apachews_event_respond(const apachews_event *const event, uint8_t *data, size_t length);
+
+// Client
+ssize_t apachews_client_send(const apachews_client *const client, const void *const data, size_t length);
+int apachews_client_close(apachews_client *const client);
+SOCKET apachews_client_get_socket(const apachews_client *const client);
+void apachews_client_free(apachews_client *const client);
 
 // Stream
 apachews_stream *apachews_stream_new(void);

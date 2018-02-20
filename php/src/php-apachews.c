@@ -6,42 +6,60 @@
 #define ApacheWSSocketST "ApacheWSSocket"
 #define ApacheWSContextST "ApacheWSContext"
 #define ApacheWSEventST "ApacheWSEvent"
+#define ApacheWSClientST "ApacheWSClient"
 
 static ZEND_OBJECT php_apachews_server_new(zend_class_entry *ce TSRMLS_DC);
 static ZEND_OBJECT php_apachews_event_new(zend_class_entry *ce TSRMLS_DC);
+static ZEND_OBJECT php_apachews_client_new(zend_class_entry *ce TSRMLS_DC);
+
 static void php_apachews_server_dtor(zend_object *object);
 static void php_apachews_event_dtor(zend_object *object);
+static void php_apachews_client_dtor(zend_object *object);
 
 DefinePHPObject(server, context);
 DefinePHPObject(event, event);
+DefinePHPObject(client, client);
 
 PHP_METHOD(Server, __construct);
 PHP_METHOD(Server, dequeue);
 PHP_METHOD(Server, broadcast);
+PHP_METHOD(Server, language);
 // Define `server' object methods
 static const zend_function_entry php_apachews_server_methods[] = {
     PHP_ME(Server, __construct, NULL, ZEND_ACC_PUBLIC | ZEND_ACC_CTOR)
     PHP_ME(Server, dequeue, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(Server, broadcast, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(Server, language, NULL, ZEND_ACC_PUBLIC)
     PHP_FE_END
 };
 
-PHP_METHOD(Event, close);
+PHP_METHOD(Event, getClient);
 PHP_METHOD(Event, read);
-PHP_METHOD(Event, write);
+PHP_METHOD(Event, respond);
 PHP_METHOD(Event, type);
 // Define `Event' object methods
 static const zend_function_entry php_apachews_event_methods[] = {
-    PHP_ME(Event, close, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(Event, getClient, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(Event, read, NULL, ZEND_ACC_PUBLIC)
-    PHP_ME(Event, write, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(Event, respond, NULL, ZEND_ACC_PUBLIC)
     PHP_ME(Event, type, NULL, ZEND_ACC_PUBLIC)
+    PHP_FE_END
+};
+
+PHP_METHOD(Client, send);
+PHP_METHOD(Client, close);
+// Define `Client' object methods
+static const zend_function_entry php_apachews_client_methods[] = {
+    PHP_ME(Client, send, NULL, ZEND_ACC_PUBLIC)
+    PHP_ME(Client, close, NULL, ZEND_ACC_PUBLIC)
     PHP_FE_END
 };
 static zend_class_entry *php_apachews_server_ce;
 static zend_object_handlers php_apachews_server_handlers;
 static zend_class_entry *php_apachews_event_ce;
 static zend_object_handlers php_apachews_event_handlers;
+static zend_class_entry *php_apachews_client_ce;
+static zend_object_handlers php_apachews_client_handlers;
 
 // Disable debugging
 #define ZEND_DEBUG 0
@@ -68,6 +86,8 @@ PHP_MINIT_FUNCTION(apachews_php)
     CREATE_CLASS_ENTRY(ce, "Server", php_apachews_server);
     // Create 'Event' Class Entry
     CREATE_CLASS_ENTRY(ce, "Event", php_apachews_event);
+    // Create 'Client' Class Entry
+    CREATE_CLASS_ENTRY(ce, "Event", php_apachews_client);
     // OS specific initialization
     apachews_initialize_os();
     // Remove the ports file if it exists
@@ -140,8 +160,41 @@ php_apachews_event_dtor(zend_object *object)
 {
     php_apachews_event *instance;
     instance = PHP_APACHEWS_GET_OBJECT(php_apachews_event, object);
+    fprintf(stderr, "destroying event instance\n");
     // Free the event
     apachews_event_free(instance->event);
+    // Unset every thing
+    memset(instance, 0, SIZEOF_CE(php_apachews_event));
+    // Now, release memory
+    efree(instance);
+}
+
+ZEND_OBJECT
+php_apachews_client_new(zend_class_entry *ce TSRMLS_DC)
+{
+    php_apachews_event *object;
+    ZEND_OBJECT result;
+    object = ecalloc(1, SIZEOF_CE(php_apachews_event));
+    result = PHP_APACHEWS_EMPTY_ZEND_OBJECT;
+    if (object == NULL)
+        return result;
+    zend_object_std_init(&object->parent, ce TSRMLS_CC);
+    object_properties_init(&object->parent, ce);
+
+    PHP_APACHEWS_INITIALIZE_OBJECT(result, object);
+    PHP_APACHEWS_SET_HANDLERS(result, event);
+
+    return result;
+}
+
+static void
+php_apachews_client_dtor(zend_object *object)
+{
+    php_apachews_client *instance;
+    instance = PHP_APACHEWS_GET_OBJECT(php_apachews_client, object);
+    fprintf(stderr, "destroying client instance\n");
+    // Free the event
+    apachews_client_free(instance->client);
     // Unset every thing
     memset(instance, 0, SIZEOF_CE(php_apachews_event));
     // Now, release memory
@@ -169,6 +222,10 @@ PHP_METHOD(Server, __construct)
         zend_error(E_ERROR, "cannot create the server %s");
 }
 
+PHP_METHOD(Server, language)
+{
+}
+
 PHP_METHOD(Server, dequeue)
 {
     php_apachews_server *instance;
@@ -183,7 +240,7 @@ PHP_METHOD(Server, dequeue)
     // will return `ApacheWSInvalidEvent'
     object_init_ex(return_value, php_apachews_event_ce);
     result = Z_PHP_APACHEWS_GET_OBJECT(php_apachews_event, return_value);
-    result->event = apachews_next_event(instance->context);
+    result->event = apachews_server_next_event(instance->context);
 }
 
 PHP_METHOD(Server, broadcast)
@@ -198,13 +255,14 @@ PHP_METHOD(Server, broadcast)
                                          &self, php_apachews_event_ce, &string);
     if (result == FAILURE)
         return;
-    if (apachews_broadcast(instance->context,
+    if (apachews_server_broadcast(instance->context,
              (const uint8_t *) Z_STRVAL_P(string), Z_STRLEN_P(string)) == -1) {
         RETURN_FALSE;
     }
     RETURN_TRUE;
 }
 
+// This should be `Client' class
 PHP_METHOD(Event, read)
 {    
     php_apachews_event *instance;
@@ -224,7 +282,8 @@ PHP_METHOD(Event, read)
     }
 }
 
-PHP_METHOD(Event, write)
+// This should be `Client' class
+PHP_METHOD(Event, respond)
 {
     size_t length;
     uint8_t *data;
@@ -241,7 +300,7 @@ PHP_METHOD(Event, write)
     length = Z_STRLEN_P(string);
     if (instance->event == NULL)
         RETURN_LONG(ApacheWSInvalidEvent);
-    if (apachews_event_write(instance->event, data, length) == ApacheWSSuccess)
+    if (apachews_event_respond(instance->event, data, length) == ApacheWSSuccess)
         RETURN_TRUE;
     RETURN_FALSE;
 }
@@ -255,22 +314,48 @@ PHP_METHOD(Event, type)
     RETURN_LONG(apachews_event_get_type(instance->event));
 }
 
-PHP_METHOD(Event, close)
+PHP_METHOD(Event, getClient)
 {
-    apachews_context *ctx;
-    php_apachews_event *instance;
-    SOCKET sock;
-    instance = Z_PHP_APACHEWS_GET_OBJECT(php_apachews_event, getThis());
-    if (instance->event == NULL)
+    php_apachews_client *result;
+    // const apachews_context *ctx;
+    php_apachews_event *self;
+    // const apachews_client *client;
+    self = Z_PHP_APACHEWS_GET_OBJECT(php_apachews_event, getThis());
+    if (self->event == NULL)
         RETURN_FALSE;
-    // Get a pointer to the context
-    ctx = apachews_event_get_context(instance->event);
-    // Get the socket value to close it
-    sock = apachews_event_get_socket(instance->event);
-    // Remove the client from the list
-    apachews_context_remove_client(ctx, sock);
-    // Close the socket now
-    closesocket(sock);
-    // Don't leave a dangling pointer
-    instance->event = NULL;
+    object_init_ex(return_value, php_apachews_client_ce);
+    result = Z_PHP_APACHEWS_GET_OBJECT(php_apachews_client, return_value);
+    result->client = apachews_event_get_client(self->event);
+}
+
+// This should be `Client' class
+PHP_METHOD(Client, send)
+{
+    size_t length;
+    uint8_t *data;
+    php_apachews_client *self;
+    int result;
+    zval *string;
+    // zval *self;
+    result = zend_parse_method_parameters(argc, getThis(), "Oz",
+                                         &self, php_apachews_event_ce, &string);
+    if (result == FAILURE)
+        return;
+    self = Z_PHP_APACHEWS_GET_OBJECT(php_apachews_client, getThis());
+    data = (uint8_t *) Z_STRVAL_P(string);
+    length = Z_STRLEN_P(string);
+    if (self->client == NULL)
+        RETURN_FALSE;
+    if (apachews_client_send(self->client, data, length) == length)
+        RETURN_LONG(length);
+    RETURN_FALSE;
+}
+
+PHP_METHOD(Client, close)
+{
+    php_apachews_client *self;
+    self = Z_PHP_APACHEWS_GET_OBJECT(php_apachews_client, getThis());
+    if (self->client == NULL)
+        RETURN_FALSE;
+    apachews_client_close(self->client);
 }

@@ -1,5 +1,5 @@
 <?php
-$path = "/home/iharob/www/hti/hti.ws";
+$path = "/var/www/public_html/websocket.ws";
 if (file_exists($path))
     unlink($path);
 $ws = new apachews\Server($path);
@@ -17,9 +17,14 @@ while ($event = $ws->dequeue()) {
         switch ($data) {
         case ApacheWSError:
         case ApacheWSConnectionClosed:
+            // VERY IMPORTANT: otherwise the server enters an ill
+            //                 state, where the event is destroy forever and
+            //                 deqeue() returns immediately with the
+            //                 DESTROYED event.
+            $event->close();
             break;
         default:
-            $event->write($data);
+            echo $data;
             break;
         }
         break;

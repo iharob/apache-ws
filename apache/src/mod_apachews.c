@@ -696,7 +696,7 @@ apachews_check_socket(apr_pool_t *pool, const apr_pollfd_t *const ready,
 }
 
 static bool
-apachews_start(apr_socket_t *client, apr_pool_t *pool, const char *const path)
+apachews_start(apr_socket_t *client, apr_pool_t *pool, const char *const path, const char *const language)
 {
     apr_pollfd_t pollfd[] = {POLLFD_INITIALIZER, POLLFD_INITIALIZER};
     apr_pollset_t *pset;
@@ -763,53 +763,70 @@ error:
     return false;
 }
 
+const char *
+apachews_find_header(const apr_array_header_t *headers, const char *const name)
+{
+    apr_table_entry_t *entries;
+
+    entries = (apr_table_entry_t *) headers->elts;
+    for (int index = 0 ; index < headers->nelts ; ++index) {
+        const apr_table_entry_t *entry;
+        entry = (apr_table_entry_t *) &entries[index];
+        if (strcasecmp(entry->key, name) != 0) {
+            continue;
+        }
+        return entry->val;
+    }
+    return NULL;
+}
+
 static int
 apachews_handler(request_rec *request)
 {
     apr_socket_t *sock;
-    const apr_array_header_t *fields;
-    apr_table_entry_t *entries;
+    const apr_array_header_t *headers;
+    const char *language;
+    const char *key;
+    char accept[38];
     // Check of we should handle this
     if (strcmp(request->handler, "websocket") != 0)
         return DECLINED;
+    sock = NULL;
     // Get the request headers to negotiate with the
     // websocket client.
-    fields = apr_table_elts(request->headers_in);
-    entries = (apr_table_entry_t *) fields->elts;
+    headers = apr_table_elts(request->headers_in);
+    // entries = (apr_table_entry_t *) headers->elts;
     // Parse the headers and make a websocket negotiation
-    for (int i = 0 ; i < fields->elt_size ; ++i) {
-        char key[28];
-        if ((entries[i].key == NULL) || (strcasecmp(entries[i].key, "null") == 0))
-            continue;
-        if (strcasecmp(entries[i].key, "sec-websocket-key") != 0)
-            continue;
-        // Make the accept key to notify the client
-        // that we have accepted this connection and
-        // are willing to convert it into a
-        // websocket connection
-        apachews_accept_key(entries[i].val, key);
-        // Send other importante headers
-        apr_table_merge(request->headers_out, "X-WebSocket-Server", "apachews");
-        apr_table_merge(request->headers_out, "Sec-WebSocket-Accept", key);
-        apr_table_merge(request->headers_out, "Upgrade", "websocket");
-        apr_table_merge(request->headers_out, "Connection", "Upgrade");
-        // Status should be "101 Switching Protocols"
-        request->status = 101;
-        request->status_line = "101 Switching Protocols";
-        // Respond to the client now
-        ap_send_interim_response(request, 1);
-        ap_finalize_request_protocol(request);
-        // Get a reference to the connection socket
-        sock = ap_get_conn_socket(request->connection);
-        if (sock != NULL) {
-            // Call the main function to start forwarding
-            // frames from/to the client/server
-            //
-            // Here, server refers to a program that will be
-            // serving data to the websocket clients connected
-            // to this socket
-            apachews_start(sock, request->pool, request->filename);
-        }
+    key = apachews_find_header(headers, "sec-websocket-key");
+    if (key == NULL)
+        return HTTP_INTERNAL_SERVER_ERROR;
+    language = apachews_find_header(headers, "accept-language");
+    // Make the accept key to notify the client
+    // that we have accepted this connection and
+    // are willing to convert it into a
+    // websocket connection
+    apachews_accept_key(key, accept);
+    // Send other importante headers
+    apr_table_merge(request->headers_out, "X-WebSocket-Server", "apachews");
+    apr_table_merge(request->headers_out, "Sec-WebSocket-Accept", accept);
+    apr_table_merge(request->headers_out, "Upgrade", "websocket");
+    apr_table_merge(request->headers_out, "Connection", "Upgrade");
+    // Status should be "101 Switching Protocols"
+    request->status = 101;
+    request->status_line = "101 Switching Protocols";
+    // Respond to the client now
+    ap_send_interim_response(request, 1);
+    ap_finalize_request_protocol(request);
+    // Get a reference to the connection socket
+    sock = ap_get_conn_socket(request->connection);
+    if (sock != NULL) {
+        // Call the main function to start forwarding
+        // frames from/to the client/server
+        //
+        // Here, server refers to a program that will be
+        // serving data to the websocket clients connected
+        // to this socket
+        apachews_start(sock, request->pool, request->filename, language);
         return OK;
     }
     return HTTP_INTERNAL_SERVER_ERROR;
