@@ -100,6 +100,7 @@ PHP_MINIT_FUNCTION(apachews_php)
     apachews_register_enum(ApacheWSNoData, flags, modnum);
     apachews_register_enum(ApacheWSConnectionClosed, flags, modnum);
     apachews_register_enum(ApacheWSAcceptEvent, flags, modnum);
+    apachews_register_enum(ApacheWSCloseEvent, flags, modnum);
     apachews_register_enum(ApacheWSIOEvent, flags, modnum);
 
     return SUCCESS;

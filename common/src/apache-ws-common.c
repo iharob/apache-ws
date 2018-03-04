@@ -14,6 +14,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <signal.h>
+#include <poll.h>
 
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -24,39 +26,41 @@ typedef int SOCKET;
 typedef int DWORD;
 #endif
 
-typedef struct apachews_stream {
+struct apachews_stream {
     uint8_t *data;
     size_t length;
     size_t size;
-} apachews_stream;
+};
 
 #define DEFAULT_CLIENTS_COUNT 1024
 #define BASE_BUFFER_SIZE 0x4000
 
-typedef struct apachews_event {
+struct apachews_event {
     apachews_client *client;
     apachews_event *next;
     apachews_event_type type;
     const apachews_context *context;
-} apachews_event;
+};
 
-typedef struct apachews_client {
+struct apachews_client {
     apachews_context *context;
     SOCKET sock;
     char *language;
-} apachews_client;
-
+};
 
 typedef struct apachews_client_list {
     apachews_client *client;
     struct apachews_client_list *next;
 } apachews_client_list;
 
-typedef struct apachews_context {
+struct apachews_context {
     SOCKET server;
     apachews_client_list *clients;
+
+    struct pollfd *pollfds;
+    int pollcnt;
     apachews_event *queue;
-} apachews_context;
+};
 
 static int
 apachews_clientcmp(const void *const _lhs, const void *const _rhs)
@@ -90,16 +94,93 @@ apachews_client_list_get_client(apachews_client_list *const list)
     return list->client;
 }
 
+static int
+apachews_poll(struct pollfd **set, int count, SOCKET sock, short events)
+{
+    struct pollfd *added;
+    if ((*set == NULL) || (count >= DEFAULT_CLIENTS_COUNT)) {
+        size_t blocks;
+        void *buffer;
+        blocks = 1 + count / DEFAULT_CLIENTS_COUNT;
+        buffer = realloc(*set, blocks * DEFAULT_CLIENTS_COUNT * sizeof (**set));
+        if (buffer == NULL)
+            return -1;
+        *set = buffer;
+    }
+
+    if (*set == NULL)
+        return -1;
+
+    added = &((*set)[count]);
+
+    added->fd = sock;
+    added->revents = 0;
+    added->events = events;
+
+    return count + 1;
+}
+
+static int
+apachews_find_pollfd_position(int count, const struct pollfd *const set, SOCKET which)
+{
+    for (int index = 0 ; index < count; ++index) {
+        const struct pollfd *item;
+        item = &set[index];
+        if (item->fd != which)
+            continue;
+        return index;
+    }
+    return -1;
+}
+
+static void
+apachews_unpoll(apachews_context *const ctx, SOCKET sock)
+{
+    int index;
+    index = apachews_find_pollfd_position(ctx->pollcnt, ctx->pollfds, sock);
+    if (index != -1) {
+        struct pollfd *start;
+        ssize_t length;
+        // Subtract the removed descriptor
+        ctx->pollcnt -= 1;
+        // How many items need to be moved?
+        length = ctx->pollcnt - index;
+        // Point to the object that we will replace
+        start = ctx->pollfds + index;
+        // Finally move the data
+        memmove(start, start + 1, length);
+    }
+}
+
 bool
-apachews_client_list_append(apachews_client_list *const list, apachews_client *const value)
+apachews_client_list_append(apachews_context *const ctx, apachews_client *const value)
 {
     apachews_client_list *node;
+    apachews_client_list *list;
+    SOCKET sock;
+    ssize_t count;
+    sock = apachews_client_get_socket(value);
+    // Attempt to add the socket to the
+    // poll set.
+    count = apachews_poll(&ctx->pollfds, ctx->pollcnt, sock, POLLIN);
+    if (count == -1)
+        return false;
+    // Added successfuly, update the
+    // counter
+    ctx->pollcnt += 1;
+    // Insert the `client' object into the
+    // list now
+    list = ctx->clients;
     node = apachews_client_list_create_node(value);
     if (node == NULL)
-        return false;
+        goto error;
     node->next = list->next;
     list->next = node;
+
     return true;
+error:
+    apachews_unpoll(ctx, apachews_client_get_socket(value));
+    return false;
 }
 
 apachews_client_list **
@@ -131,21 +212,31 @@ apachews_create_context(SOCKET sock)
 {
     apachews_context *ctx;
     apachews_client *root;
+    short events;
     // Allocate space
     ctx = malloc(sizeof(*ctx));
     if (ctx == NULL)
         return NULL;
     root = apachews_create_client(INVALID_SOCKET, ctx);
-    if (root == NULL) {
-        free(ctx);
-        return NULL;
-    }
+    if (root == NULL)
+        goto error;
     // Make initial room for the clients
+    events = POLLIN | POLLHUP;
+    // Insert the server into the poll set to
+    // receive accept and probably close events
+    // too
+    ctx->pollcnt = apachews_poll(&ctx->pollfds, ctx->pollcnt, sock, events);
+    if (ctx->pollcnt == -1)
+        goto error;
     ctx->clients = apachews_client_list_create_node(root);
     // Populate
     ctx->queue = NULL;
-    ctx->server = sock;
+    ctx->server = sock;    
     return ctx;
+error:
+    apachews_client_free(root);
+    free(ctx);
+    return NULL;
 }
 
 #if defined (_WIN32)
@@ -249,13 +340,20 @@ error:
     return NULL;
 }
 #else
+
 apachews_context *
 apachews_create(const char *const path)
 {
     socklen_t length;
     struct sockaddr_un address;
+    struct sigaction signals;
     int flags;
     int sock;
+
+    signals.sa_flags = 0;
+    signals.sa_handler = SIG_IGN;
+
+    sigaction(SIGUSR1, &signals, NULL);
     // Create a Unix Domain Socket
     sock = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sock == -1)
@@ -289,6 +387,8 @@ apachews_context_free(apachews_context *ctx)
 {
     if (ctx == NULL)
         return;
+    if (ctx->server != -1)
+        close(ctx->server);
     // FIXME: remove them all?
     free(ctx->clients);
     free(ctx->queue);
@@ -299,11 +399,12 @@ void
 apachews_context_remove_client(apachews_context *ctx, const apachews_client *const client)
 {
     apachews_client_list **found;
+    apachews_unpoll(ctx, apachews_client_get_socket(client));
+    // Relink the linked list and free the element
     found = apachews_client_list_find(ctx->clients, client);
     if (*found != NULL) {
         apachews_client_list *next;
         next = (*found)->next;
-
         free(*found);
         *found = next;
     }
@@ -344,6 +445,25 @@ apachews_dequeue_event(apachews_context *ctx)
 }
 
 apachews_event *
+apachews_create_close_event()
+{
+    apachews_event *event;
+    // Attempt to allocate memory
+    event = malloc(sizeof(*event));
+    if (event == NULL)
+        return NULL;
+    // Populate the event
+    event->next = NULL;
+    // This allows to have a reference to the
+    // connected client
+    event->client = NULL;
+    // This, is mandatory
+    event->type = ApacheWSCloseEvent;
+    event->context = NULL;
+    return event;
+}
+
+apachews_event *
 apachews_create_accept_event(apachews_context *ctx, apachews_client *const client)
 {
     apachews_event *event;
@@ -375,36 +495,94 @@ apachews_event_get_type(const apachews_event * const event)
     return event->type;
 }
 
-SOCKET
-apachews_client_list_add_all_to_fdset(apachews_client_list *const clients, fd_set *fds, SOCKET nfds)
-{
-    for (apachews_client_list *bst = clients; bst != NULL; bst = bst->next) {
-        const apachews_client *client;
-        SOCKET sock;
-        client = apachews_client_list_get_client(bst);
-        if ((sock = apachews_client_get_socket(client)) == INVALID_SOCKET)
-            continue;
-        if (nfds < sock)
-            nfds = sock;
-        FD_SET(sock, fds);
-    }
-    return nfds;
-}
-
-
 const char *
 apachews_client_get_language(const apachews_client *const ctx)
 {
     return ctx->language;
 }
 
+apachews_client *
+apachews_find_client_by_socket(apachews_client_list *list, SOCKET sock)
+{
+    while (list != NULL) {
+        apachews_client *client;
+        client = list->client;
+        if (client == NULL)
+            continue; // WTF?
+        if (client->sock == sock)
+            return client;
+        list = list->next;
+    }
+    return NULL;
+}
+
+static bool
+apachews_is_error_event(int events)
+{
+    return
+        ((events & POLLERR ) == POLLERR ) ||
+        ((events & POLLNVAL) == POLLNVAL)
+    ;
+}
+
+static apachews_event *
+apachews_server_get_event(const struct pollfd *const set, apachews_context *const ctx)
+{
+    apachews_event *event;
+    if (apachews_is_error_event(set->revents) == true) {
+        event = apachews_create_close_event();
+        if (set->fd != ctx->server) {
+            apachews_client *client;
+            client = apachews_find_client_by_socket(ctx->clients, set->fd);
+            if (client != NULL) {
+                apachews_context_remove_client(ctx, client);
+            }
+        }
+        apachews_unpoll(ctx, set->fd);
+    } if (set->fd == ctx->server) {
+        apachews_client *client;
+        SOCKET sock;
+        // It's an accept event
+        //
+        // If the event occurred with the server descriptor, then it
+        // means that `accept()' would return immediately.
+        //
+        // So, we will call `accept()' and add the returned socket to
+        // the list of client sockets. And then, return the event so
+        // the caller can continue with the next event
+        sock = accept(ctx->server, NULL, NULL);
+        if (sock == INVALID_SOCKET)
+            return NULL;
+        client = apachews_create_client(sock, ctx);
+        // Append the accepted client to the list
+        if (apachews_client_list_append(ctx, client) == false)
+            return NULL;
+        // Make a accept event, this is created on the heap because
+        // PHP will deallocate the memory so using a stack variable
+        // for this is not possible.
+        event = apachews_create_accept_event(ctx, client);
+    } else {
+        // Check if there are read events
+        apachews_client *client;
+        client = apachews_find_client_by_socket(ctx->clients, set->fd);
+        if (client != NULL) {
+            // Add the potential event to the queue
+            apachews_queue_event(&ctx->queue, client, ctx, ApacheWSIOEvent);
+        }
+        event = NULL;
+    }
+    return event;
+}
+
 apachews_event *
 apachews_server_next_event(apachews_context *ctx)
 {
-    fd_set rfds;
-    SOCKET nfds;
+    // fd_set rfds;
+    // SOCKET nfds;
+    apachews_event *event;
     apachews_event *queue;
     int count;
+
     if (ctx == NULL)
         return NULL;
     // Make a pointer to the `queue' of events
@@ -412,55 +590,20 @@ apachews_server_next_event(apachews_context *ctx)
     // If there are events in the queue, dequeue them
     if ((queue != NULL) && (queue->next != NULL))
         goto dequeue;
-    // Initialize the select context data
-    FD_ZERO(&rfds);
-    // Add the server (for accept only)
-    FD_SET(ctx->server, &rfds);
-    // Add every file descriptor to the set
-    nfds = apachews_client_list_add_all_to_fdset(ctx->clients, &rfds, ctx->server);
     // Perform descriptor selection
-    if ((count = select((int) nfds + 1, &rfds, NULL, NULL, NULL)) == SOCKET_ERROR)
+    if ((count = poll(ctx->pollfds, ctx->pollcnt, -1)) == SOCKET_ERROR)
         return NULL;
-    // Check if it's an accept event
-    //
-    // If the event occurred with the server descriptor, then it
-    // means that `accept()' would return immediately.
-    //
-    // So, we will call `accept()' and add the returned socket to
-    // the list of client sockets. And then, return the event so
-    // the caller can continue with the next event
-    if (FD_ISSET(ctx->server, &rfds) != 0) {
-        apachews_event *event;
-        SOCKET sock;
-        apachews_client *client;
-        sock = accept(ctx->server, NULL, NULL);
-        if (sock == INVALID_SOCKET)
-            return NULL;
-        client = apachews_create_client(sock, ctx);
-        // Append the accepted client to the list
-        if (apachews_client_list_append(ctx->clients, client) == false)
-            return NULL;
-        // Make a accept event, this is created on the heap because
-        // PHP will deallocate the memory so using a stack variable
-        // for this is not possible.
-        event = apachews_create_accept_event(ctx, client);
-        if (event == NULL)
-            return NULL;
-        return event;
-    } else {
-        // Check if there are read events
-        for (apachews_client_list *bst = ctx->clients; bst != NULL; bst = bst->next) {
-            apachews_client *client;
-            SOCKET sock;
-
-            client = apachews_client_list_get_client(bst);
-            // This is just to avoid repeating code
-            sock = apachews_client_get_socket(client);
-            // Check whether this socket was in the set
-            if (FD_ISSET(sock, &rfds) == 0)
-                continue;
-            // Add the socket to the queue
-            apachews_queue_event(&ctx->queue, client, ctx, ApacheWSIOEvent);
+    for (int index = 0; index < ctx->pollcnt; ++index) {
+        const struct pollfd *pfd;
+        pfd = &ctx->pollfds[index];
+        if (pfd->revents == 0)
+            continue;
+        event = apachews_server_get_event(pfd, ctx);
+        if (event != NULL) {
+            // If an event is returned, return it immediately
+            // because it's an `accept()' generated in the server
+            // socket
+            return event;
         }
     }
 dequeue:
@@ -668,9 +811,8 @@ apachews_server_broadcast(const apachews_context *const ctx, const uint8_t *cons
 {
     ssize_t total;
     total = 0;
-    for (apachews_client_list *node = ctx->clients; node != NULL; node = node->next) {
+    for (apachews_client_list *node = ctx->clients; node != NULL; node = node->next)
         total += apachews_client_send(apachews_client_list_get_client(node), data, length);
-    }
     return total;
 }
 
@@ -678,6 +820,16 @@ ssize_t
 apachews_client_send(const apachews_client *const client, const void *const data, size_t length)
 {
     return apachews_write(apachews_client_get_socket(client), data, length);
+}
+
+int
+apachews_server_close(apachews_context *const ctx)
+{
+    // Close it now
+    closesocket(ctx->server);
+    // Raise the signal now
+    raise(SIGUSR1);
+    return 0;
 }
 
 int

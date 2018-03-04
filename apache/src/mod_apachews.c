@@ -308,9 +308,8 @@ apachews_read_text_frame(struct apachews_frame *frame, const uint8_t *data, size
     // Payload comes after the masking bytes (4 bytes)
     payload = data + sizeof(int32_t);
     // Frames from clients are masked, unmask it
-    for (size_t i = 0 ; i < length ; ++i) {
+    for (size_t i = 0 ; i < length ; ++i)
         frame->data[i] = (int32_t) payload[i] ^ (int32_t) data[i % 4];
-    }
     frame->data[length] = '\0';
 }
 
@@ -336,9 +335,8 @@ apachews_frame_get_data(const uint8_t *const data,
     switch (header->type) {
     case WSTextFrame:
         // If it's a frame from the client IT MUST BE MASKED
-        if (header->masked == true) {
+        if (header->masked == true)
             apachews_read_text_frame(frame, data, header->length);
-        }
         break;
     case WSCloseFrame:
         break;

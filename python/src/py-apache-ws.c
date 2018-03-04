@@ -26,6 +26,7 @@ typedef struct py_apachews_client {
 static PyObject *py_apachews_server_broadcast(PyObject *self, PyObject *args);
 static PyObject *py_apachews_server_dequeue(PyObject *self, PyObject *args);
 static PyObject *py_apachews_server_language(PyObject *self, PyObject *args);
+static PyObject *py_apachews_server_close(PyObject *self, PyObject *args);
 
 static PyObject *py_apachews_event_respond(PyObject *self, PyObject *args);
 static PyObject *py_apachews_event_read(PyObject *self, PyObject *args);
@@ -53,6 +54,7 @@ typedef struct py_enum {
 static const py_enum py_apachews_event_types[] = {
     {"Invalid", ApacheWSInvalidEvent},
     {"Accept", ApacheWSAcceptEvent},
+    {"Close", ApacheWSCloseEvent},
     {"IO", ApacheWSIOEvent},
     {"NoData", ApacheWSNoData},
     {"ConnectionClosed", ApacheWSConnectionClosed},
@@ -64,6 +66,7 @@ static PyMethodDef py_apachews_server_methods[] = {
     {"dequeue", py_apachews_server_dequeue, METH_NOARGS, NULL},
     {"broadcast", py_apachews_server_broadcast, METH_NOARGS, NULL},
     {"language", py_apachews_server_language, METH_NOARGS, NULL},
+    {"close", py_apachews_server_close, METH_NOARGS, NULL},
     {NULL, NULL, 0, NULL}
 };
 
@@ -380,6 +383,17 @@ py_apachews_server_language(PyObject *self, PyObject *args)
 }
 
 static PyObject *
+py_apachews_server_close(PyObject *self, PyObject *args)
+{
+    py_apachews_server *instance;
+    // Make a pointer with the appropriate type
+    instance = (py_apachews_server *) self;
+    // Create a new 'Event' object, calling the init function too
+    apachews_server_close(instance->context);
+    return self;
+}
+
+static PyObject *
 py_apachews_server_dequeue(PyObject *self, PyObject *args)
 {
     py_apachews_server *instance;
@@ -398,9 +412,6 @@ py_apachews_server_dequeue(PyObject *self, PyObject *args)
                            // other threads when we block here!
     result->event = apachews_server_next_event(instance->context);
     Py_END_ALLOW_THREADS // Allos the GIL to be blocked again
-
-    if (result->event == NULL)
-        return py_apachews_error(PyExc_SystemError, "returning an invalid event");
     return obj;
 }
 

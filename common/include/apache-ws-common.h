@@ -2,22 +2,22 @@
 #define __apachews_COMMON_H__
 
 #if defined (_WIN32)
-#    include <WinSock2.h>
-#    define MSG_DONTWAIT 0
-#    define MSG_NOSIGNAL 0
-#    define EXPORT __declspec(dllexport)
-    typedef SSIZE_T ssize_t;
+#include <WinSock2.h>
+#define MSG_DONTWAIT 0
+#define MSG_NOSIGNAL 0
+#define EXPORT __declspec(dllexport)
+typedef SSIZE_T ssize_t;
 #else
-#    include <sys/socket.h>
-#   include <stdint.h>
-#    include <stdbool.h>
-    typedef int SOCKET;
-    typedef int32_t DWORD;
-    typedef bool BOOL;
-#    define EXPORT
-#    define INVALID_SOCKET (-1)
-#    define SOCKET_ERROR (-1)
-#    define closesocket(x) do {shutdown((x), SHUT_RDWR); close((x));} while(0)
+#include <sys/socket.h>
+#include <stdint.h>
+#include <stdbool.h>
+typedef int SOCKET;
+typedef int32_t DWORD;
+typedef bool BOOL;
+#define EXPORT
+#define INVALID_SOCKET (-1)
+#define SOCKET_ERROR (-1)
+#define closesocket(x) do {shutdown((x), SHUT_RDWR); close((x));} while(0)
 #endif
 
 #define SOCKET_DISCONNECTED 0
@@ -25,6 +25,7 @@ typedef struct apachews_stream apachews_stream;
 typedef enum apachews_event_type {
     ApacheWSInvalidEvent = 8000,
     ApacheWSAcceptEvent, 
+    ApacheWSCloseEvent,
     ApacheWSIOEvent
 } apachews_event_type;
 
@@ -45,9 +46,11 @@ typedef struct apachews_client apachews_client;
 apachews_context *apachews_create(const char *const path);
 void apachews_context_free(apachews_context *ctx);
 void apachews_context_remove_client(apachews_context *ctx, const apachews_client *const  client);
-apachews_event *apachews_server_next_event(apachews_context *ctx);
 ssize_t apachews_server_broadcast(const apachews_context *const ctx, const uint8_t *const data, size_t length);
 const char *apachews_client_get_language(const apachews_client * const ctx);
+
+apachews_event *apachews_server_next_event(apachews_context *ctx);
+int apachews_server_close(apachews_context *const context);
 
 // Event
 const apachews_context *apachews_event_get_context(const apachews_event *const event);
